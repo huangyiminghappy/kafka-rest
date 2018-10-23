@@ -136,7 +136,7 @@ public class SimpleConsumerManager {
       long offset,
       long count,
       final EmbeddedFormat embeddedFormat,
-      final ConsumerManager.ReadCallback callback
+      final ConsumerReadCallback callback
   ) {
 
     List<ConsumerRecord> records = null;
@@ -164,6 +164,12 @@ public class SimpleConsumerManager {
         }
 
         for (final MessageAndOffset messageAndOffset : messageAndOffsets) {
+
+          // while the offset is less than the requested offset continue
+          if (messageAndOffset.offset() < offset) {
+            continue;
+          }
+
           records.add(createConsumerRecord(
               messageAndOffset,
               topicName,

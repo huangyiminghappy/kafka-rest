@@ -10,10 +10,6 @@ exposed in the |crest-long| API, priority is given to settings in the user reque
 provided as configuration options, and finally falls back to the default values provided by the
 Java Kafka clients.
 
-.. contents:: Contents
-    :local:
-    :depth: 2
-
 General
 -------
 
@@ -25,7 +21,7 @@ General
   * Importance: high
 
 ``bootstrap.servers``
-  A list of Kafka brokers to connect to. For example, ``PLAINTEXT://hostname:9092,SSL://hostname2:9092``. This configuration is particularly important when Kafka security is enabled, because Kafka may expose multiple endpoints that all will be stored in ZooKeeper, but |crest|  may need to be configured with just one of those endpoints. The client will make use of all servers irrespective of which servers are specified here for bootstrapping—this list only impacts the initial hosts used to discover the full set of servers. Since these servers are just used for the initial connection to discover the full cluster membership (which may change dynamically), this list need not contain the full set of servers (you may want more than one, though, in case a server is down).
+  A list of Kafka brokers to connect to. For example, ``PLAINTEXT://hostname:9092,SSL://hostname2:9092``. This configuration is particularly important when Kafka security is enabled, because Kafka may expose multiple endpoints that all will be stored in |zk|, but |crest|  may need to be configured with just one of those endpoints. The client will make use of all servers irrespective of which servers are specified here for bootstrapping—this list only impacts the initial hosts used to discover the full set of servers. Since these servers are just used for the initial connection to discover the full cluster membership (which may change dynamically), this list need not contain the full set of servers (you may want more than one, though, in case a server is down).
 
 
 ``listeners``
@@ -36,16 +32,16 @@ General
   * Importance: high
 
 ``schema.registry.url``
-  The base URL for the schema registry that should be used by the Avro serializer.
+  The base URL for |sr| that should be used by the Avro serializer.
 
   * Type: string
   * Default: "http://localhost:8081"
   * Importance: high
 
 ``zookeeper.connect``
-  Specifies the ZooKeeper connection string in the form hostname:port where host and port are the host and port of a ZooKeeper server. To allow connecting through other ZooKeeper nodes when that ZooKeeper machine is down you can also specify multiple hosts in the form hostname1:port1,hostname2:port2,hostname3:port3.
+  Specifies the |zk| connection string in the form hostname:port where host and port are the host and port of a |zk| server. To allow connecting through other |zk| nodes when that |zk| machine is down you can also specify multiple hosts in the form hostname1:port1,hostname2:port2,hostname3:port3.
 
-  The server may also have a ZooKeeper chroot path as part of it's ZooKeeper connection string which puts its data under some path in the global ZooKeeper namespace. If so the consumer should use the same chroot path in its connection string. For example to give a chroot path of /chroot/path you would give the connection string as hostname1:port1,hostname2:port2,hostname3:port3/chroot/path.
+  The server may also have a |zk| chroot path as part of it's |zk| connection string which puts its data under some path in the global |zk| namespace. If so the consumer should use the same chroot path in its connection string. For example to give a chroot path of /chroot/path you would give the connection string as hostname1:port1,hostname2:port2,hostname3:port3/chroot/path.
 
   * Type: string
   * Default: "localhost:2181"
@@ -62,7 +58,7 @@ General
   The maximum number of threads to run consumer requests on. Note that this must be greater than the maximum number of consumers in a single consumer group.
   The sentinel value of -1 allows the number of threads to grow as needed to fulfill active consumer requests. Inactive threads will ultimately be stopped and cleaned up.
   * Type: int
-  * Default: 200
+  * Default: 50
   * Importance: medium
 
 ``consumer.request.timeout.ms``
@@ -470,7 +466,7 @@ In addition to these configurations:
     /opt/kafka-rest/bin/kafka-rest-start /mnt/rest.properties 1>> /mnt/rest.log 2>> /mnt/rest.log &
 
 
-* If you need to access Schema Registry via https protocol, one would need additional javax.net.ssl.trustStore and javax.net.ssl.trustStorePassword parameters, as shown below:
+* If you need to access |sr| via https protocol, one would need additional javax.net.ssl.trustStore and javax.net.ssl.trustStorePassword parameters, as shown below:
 
   .. sourcecode:: bash
 
@@ -478,7 +474,7 @@ In addition to these configurations:
    /opt/kafka-rest/bin/kafka-rest-start /mnt/rest.properties 1>> /mnt/rest.log 2>> /mnt/rest.log &
 
 * For more details about krb5.conf file please see `JDK’s Kerberos Requirements <https://docs.oracle.com/javase/8/docs/technotes/guides/security/jgss/tutorials/KerberosReq.html>`_.
-* Keep in mind that authenticated and encrypted connection to Apache Kafka will only work when Kafka brokers (and Schema Registry, if used) are running with appropriate security configuration. Check out the documentation on `Kafka Security </kafka/security.html>`_ and `Schema Registry </schema-registry/docs/security.html>`_.
+* Keep in mind that authenticated and encrypted connection to Apache Kafka will only work when Kafka brokers (and |sr|, if used) are running with appropriate security configuration. Check out the documentation on `Kafka Security </kafka/security.html>`_ and `Schema Registry </schema-registry/docs/security.html>`_.
 
 
 
