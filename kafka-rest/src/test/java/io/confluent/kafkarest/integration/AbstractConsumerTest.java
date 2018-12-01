@@ -69,7 +69,7 @@ public class AbstractConsumerTest extends ClusterTestHarness {
       try {
         producer.send(rec).get();
       } catch (Exception e) {
-        fail("Consumer test couldn't produce input messages to Kafka");
+        fail("Consumer test couldn't produce input messages to Kafka: " + e);
       }
     }
     producer.close();
@@ -86,7 +86,7 @@ public class AbstractConsumerTest extends ClusterTestHarness {
       try {
         producer.send(rec).get();
       } catch (Exception e) {
-        fail("Consumer test couldn't produce input messages to Kafka");
+        fail("Consumer test couldn't produce input messages to Kafka: " + e);
       }
     }
     producer.close();
@@ -112,7 +112,7 @@ public class AbstractConsumerTest extends ClusterTestHarness {
       try {
         producer.send(rec).get();
       } catch (Exception e) {
-        fail("Consumer test couldn't produce input messages to Kafka");
+        fail("Consumer test couldn't produce input messages to Kafka: " + e);
       }
     }
     producer.close();
@@ -123,7 +123,7 @@ public class AbstractConsumerTest extends ClusterTestHarness {
     ConsumerInstanceConfig config = null;
     if (id != null || name != null || format != null) {
       config = new ConsumerInstanceConfig(
-          id, name, (format != null ? format.toString() : null), null, null);
+          id, name, (format != null ? format.toString() : null), null, null, null, null);
     }
     return request("/consumers/" + groupName)
         .post(Entity.entity(config, Versions.KAFKA_MOST_SPECIFIC_DEFAULT));

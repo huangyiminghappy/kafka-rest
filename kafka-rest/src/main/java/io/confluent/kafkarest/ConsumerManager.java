@@ -37,6 +37,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.RunnableFuture;
+import java.util.concurrent.BlockingQueue;
 
 import javax.ws.rs.core.Response;
 
@@ -72,7 +75,7 @@ public class ConsumerManager {
   // they're also comparatively rare. These are executed serially in a dedicated thread.
   private final ExecutorService executor;
   private ConsumerFactory consumerFactory;
-  private final DelayQueue<RunnableReadTask> delayedReadTasks = new DelayQueue<>();
+  final DelayQueue<RunnableReadTask> delayedReadTasks = new DelayQueue<>();
   private final ReadTaskSchedulerThread readTaskSchedulerThread;
   private final ExpirationThread expirationThread;
 
@@ -87,14 +90,14 @@ public class ConsumerManager {
     int maxThreadCount = config.getInt(KafkaRestConfig.CONSUMER_MAX_THREADS_CONFIG) < 0
         ? Integer.MAX_VALUE : config.getInt(KafkaRestConfig.CONSUMER_MAX_THREADS_CONFIG);
 
-    this.executor = new ThreadPoolExecutor(0, maxThreadCount,
+    this.executor = new KafkaConsumerThreadPoolExecutor(0, maxThreadCount,
         60L, TimeUnit.SECONDS,
         new SynchronousQueue<Runnable>(),
         new RejectedExecutionHandler() {
           @Override
           public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-            if (r instanceof RunnableReadTask) {
-              RunnableReadTask readTask = (RunnableReadTask) r;
+            if (r instanceof ReadFutureTask) {
+              RunnableReadTask readTask = ((ReadFutureTask)r).readTask;
               int delayMs = ThreadLocalRandom.current().nextInt(25, 75 + 1);
               readTask.waitExpirationMs = config.getTime().milliseconds() + delayMs;
               delayedReadTasks.add(readTask);
@@ -201,23 +204,7 @@ public class ConsumerManager {
         throw Errors.invalidConsumerConfigException(e);
       }
 
-      ConsumerState state;
-      switch (instanceConfig.getFormat()) {
-        case BINARY:
-          state = new BinaryConsumerState(this.config, cid, consumer);
-          break;
-        case AVRO:
-          state = new AvroConsumerState(this.config, cid, consumer);
-          break;
-        case JSON:
-          state = new JsonConsumerState(this.config, cid, consumer);
-          break;
-        default:
-          throw new RestServerErrorException(
-              "Invalid embedded format for new consumer.",
-              Response.Status.INTERNAL_SERVER_ERROR.getStatusCode()
-          );
-      }
+      ConsumerState state = createConsumerState(instanceConfig, cid, consumer);
 
       synchronized (this) {
         consumers.put(cid, state);
@@ -230,6 +217,45 @@ public class ConsumerManager {
           consumers.remove(cid);
         }
       }
+    }
+  }
+
+  private ConsumerState createConsumerState(
+          ConsumerInstanceConfig instanceConfig,
+          ConsumerInstanceId cid, ConsumerConnector consumer
+  ) throws RestServerErrorException {
+    KafkaRestConfig newConfig = ConsumerManager.newConsumerConfig(this.config, instanceConfig);
+
+    switch (instanceConfig.getFormat()) {
+      case BINARY:
+        return new BinaryConsumerState(newConfig, cid, consumer);
+      case AVRO:
+        return new AvroConsumerState(newConfig, cid, consumer);
+      case JSON:
+        return new JsonConsumerState(newConfig, cid, consumer);
+      default:
+        throw new RestServerErrorException(
+                String.format("Invalid embedded format %s for new consumer.",
+                    instanceConfig.getFormat()),
+                Response.Status.INTERNAL_SERVER_ERROR.getStatusCode()
+        );
+    }
+  }
+
+  public static KafkaRestConfig newConsumerConfig(KafkaRestConfig config,
+                                                  ConsumerInstanceConfig instanceConfig
+  ) throws RestServerErrorException {
+    Properties newProps = ConsumerInstanceConfig.attachProxySpecificProperties(
+        (Properties) config.getOriginalProperties().clone(), instanceConfig);
+
+    try {
+      return new KafkaRestConfig(newProps, config.getTime());
+    } catch (io.confluent.rest.RestConfigException e) {
+      throw new RestServerErrorException(
+          String.format("Invalid configuration for new consumer: %s", newProps),
+          Response.Status.BAD_REQUEST.getStatusCode(),
+          e
+      );
     }
   }
 
@@ -345,13 +371,43 @@ public class ConsumerManager {
     return state;
   }
 
-  private ConsumerState getConsumerInstance(String group, String instance) {
+  ConsumerState getConsumerInstance(String group, String instance) {
     return getConsumerInstance(group, instance, false);
   }
 
   public interface ConsumerFactory {
 
     ConsumerConnector createConsumer(ConsumerConfig config);
+  }
+
+  private class ReadFutureTask<V> extends FutureTask<V> {
+
+    private final RunnableReadTask readTask;
+
+    private ReadFutureTask(RunnableReadTask runnable, V result) {
+      super(runnable, result);
+      this.readTask = runnable;
+    }
+
+  }
+
+  class KafkaConsumerThreadPoolExecutor extends ThreadPoolExecutor {
+    private KafkaConsumerThreadPoolExecutor(int corePoolSize,
+                                            int maximumPoolSize,
+                                            long keepAliveTime,
+                                            TimeUnit unit,
+                                            BlockingQueue<Runnable> workQueue,
+                                            RejectedExecutionHandler handler) {
+      super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, handler);
+    }
+
+    @Override
+    protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
+      if (runnable instanceof RunnableReadTask) {
+        return new ReadFutureTask<>((RunnableReadTask) runnable, value);
+      }
+      return super.newTaskFor(runnable, value);
+    }
   }
 
   class RunnableReadTask implements Runnable, Delayed {
@@ -493,7 +549,7 @@ public class ConsumerManager {
             Iterator itr = consumers.values().iterator();
             while (itr.hasNext()) {
               final ConsumerState state = (ConsumerState) itr.next();
-              if (state.expired(now)) {
+              if (state != null && state.expired(now)) {
                 log.debug("Removing the expired consumer {}", state.getId());
                 itr.remove();
                 executor.submit(new Runnable() {

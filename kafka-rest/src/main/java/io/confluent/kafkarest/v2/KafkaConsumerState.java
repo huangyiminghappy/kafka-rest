@@ -61,7 +61,7 @@ public abstract class KafkaConsumerState<KafkaKeyT, KafkaValueT, ClientKeyT, Cli
 
   private Queue<ConsumerRecord<KafkaKeyT, KafkaValueT>> consumerRecords = new ArrayDeque<>();
 
-  private volatile long expiration;
+  volatile long expiration;
   private ReentrantLock lock;
 
   public KafkaConsumerState(
@@ -378,6 +378,10 @@ public abstract class KafkaConsumerState<KafkaKeyT, KafkaValueT, ClientKeyT, Cli
     }
   }
 
+  boolean hasNextCached() {
+    return !consumerRecords.isEmpty();
+  }
+
   ConsumerRecord<KafkaKeyT, KafkaValueT> next() {
     return consumerRecords.poll();
   }
@@ -395,10 +399,6 @@ public abstract class KafkaConsumerState<KafkaKeyT, KafkaValueT, ClientKeyT, Cli
     for (ConsumerRecord<KafkaKeyT, KafkaValueT> consumerRecord : polledRecords) {
       consumerRecords.add(consumerRecord);
     }
-  }
-
-  private boolean hasNextCached() {
-    return !consumerRecords.isEmpty();
   }
 
   private class NoOpOnRebalance implements ConsumerRebalanceListener {
